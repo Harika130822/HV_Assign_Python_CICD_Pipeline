@@ -1,5 +1,5 @@
 pipeline {
-    agent { label 'CICD_ASSIGN_NODE' }
+    agent any
 
     parameters {
         string(name: 'BRANCH', defaultValue: 'main', description: 'Branch to build')
