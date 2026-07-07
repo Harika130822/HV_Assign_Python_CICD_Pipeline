@@ -7,8 +7,6 @@ pipeline {
     }
 
     environment {
-        MONGO_URI = credentials('MONGO_URI_CICD')
-		SECRET_KEY = credentials('SECRET_KEY_CICD')
         PORT = '5000'
     }
 
