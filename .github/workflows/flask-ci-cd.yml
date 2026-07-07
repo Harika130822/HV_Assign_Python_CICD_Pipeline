@@ -1,0 +1,85 @@
+name: Flask CI/CD
+
+on:
+  push:
+    branches:
+      - main
+      - staging
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      My_Input:
+        type: string
+        description: Enter the Level
+      environment:
+        type: choice
+        default: TEST
+        options:
+          - DEV
+          - PROD
+          - TEST
+
+env:
+  PYTHON_VERSION: '3.13'
+  PORT: '5000'
+  MONGO_URI: 'mongodb://localhost:27017/students'
+  SECRET_KEY: 'dev-secret-key'
+  TESTING: 'true'
+
+jobs:
+  test-build:
+    name: Build and Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install pytest
+
+      - name: Run tests
+        run: |
+          python -m pytest test_app.py -v --tb=short
+
+  deploy-staging:
+    name: Deploy to Staging
+    needs: test-build
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Start Flask app
+        run: |
+          export MONGO_URI="${{ env.MONGO_URI }}"
+          export SECRET_KEY="${{ env.SECRET_KEY }}"
+          export TESTING="${{ env.TESTING }}"
+          nohup python app.py > app.log 2>&1 &
+          sleep 8
+          curl --fail --max-time 10 http://127.0.0.1:${{ env.PORT }} || {
+            cat app.log
+            exit 1
+          }

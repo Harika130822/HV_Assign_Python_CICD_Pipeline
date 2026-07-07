@@ -1,0 +1,103 @@
+name: Reusable EC2 Deployment
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+    secrets:
+      EC2_SSH_KEY:
+        required: true
+      host:
+        required: true
+      username:
+        required: true
+      port:
+        required: true
+
+jobs:
+  deploy:
+    name: deploy-env-${{ inputs.environment }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Copy code to EC2
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.host }}
+          username: ${{ secrets.username }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: ${{ secrets.port }}
+          source: ./
+          target: ~/flask-app
+
+      - name: Setup and run Flask app on EC2
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.host }}
+          username: ${{ secrets.username }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: ${{ secrets.port }}
+          script: |
+            set -e
+            sudo apt-get update
+            sudo apt-get install -y python3 python3-venv python3-pip nginx
+
+            cd ~/flask-app
+            python3 -m venv venv
+            source venv/bin/activate
+            pip install --upgrade pip
+            pip install -r requirements.txt
+
+            export MONGO_URI="${{ vars.MONGO_URI || 'mongodb://localhost:27017/students' }}"
+            export SECRET_KEY="${{ vars.SECRET_KEY || 'staging-secret-key' }}"
+            export TESTING="true"
+
+            sudo tee /etc/systemd/system/flask-app.service > /dev/null <<'EOF'
+            [Unit]
+            Description=Flask Student App
+            After=network.target
+
+            [Service]
+            User=${{ secrets.username }}
+            WorkingDirectory=/home/${{ secrets.username }}/flask-app
+            Environment="PATH=/home/${{ secrets.username }}/flask-app/venv/bin"
+            Environment="MONGO_URI=${{ vars.MONGO_URI || 'mongodb://localhost:27017/students' }}"
+            Environment="SECRET_KEY=${{ vars.SECRET_KEY || 'staging-secret-key' }}"
+            Environment="TESTING=true"
+            ExecStart=/home/${{ secrets.username }}/flask-app/venv/bin/python app.py
+
+            [Install]
+            WantedBy=multi-user.target
+            EOF
+
+            sudo systemctl daemon-reload
+            sudo systemctl enable flask-app || true
+            sudo systemctl restart flask-app || true
+
+            sudo tee /etc/nginx/sites-available/flask-app > /dev/null <<'EOF'
+            server {
+                listen 80;
+                server_name _;
+                location / {
+                    proxy_pass http://127.0.0.1:5000;
+                    proxy_set_header Host $host;
+                    proxy_set_header X-Real-IP $remote_addr;
+                }
+            }
+            EOF
+
+            sudo rm -f /etc/nginx/sites-enabled/default
+            sudo ln -sf /etc/nginx/sites-available/flask-app /etc/nginx/sites-enabled/flask-app
+            sudo nginx -t
+            sudo systemctl restart nginx
+
+            sleep 5
+            curl --fail --max-time 10 http://127.0.0.1/ || {
+              echo "Deployment check failed"
+              exit 1
+            }

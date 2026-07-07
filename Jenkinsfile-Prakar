@@ -1,0 +1,182 @@
+pipeline {
+    agent any
+    
+    parameters {
+        string(name: 'BRANCH', defaultValue: 'main', description: 'Branch to build')
+        choice(name: 'ENVIRONMENT', choices: ['dev', 'staging', 'production'], description: 'Deploy target')
+    }
+
+    environment {
+        APP_NAME    = 'my-java-app'
+        REGISTRY    = 'registry.example.com'
+        IMAGE_TAG   = "${BUILD_NUMBER}-${GIT_COMMIT.take(7)}"
+        DOCKER_CREDS = credentials('registry-credentials')
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+                sh 'git log --oneline -5'
+            }
+        }
+
+        stage('Build') {
+            steps {
+                sh 'mvn clean compile -B --no-transfer-progress'
+            }
+        }
+
+        stage('Test') {
+            steps {
+                sh 'mvn test -B --no-transfer-progress'
+            }
+            post {
+                always {
+                    junit 'target/surefire-reports/*.xml'
+                    publishHTML target: [
+                        allowMissing: false,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: 'target/site/jacoco',
+                        reportFiles: 'index.html',
+                        reportName: 'Coverage Report'
+                    ]
+                }
+            }
+        }
+
+        stage('Code Quality') {
+            parallel {
+                stage('SonarQube') {
+                    steps {
+                        withSonarQubeEnv('sonarqube-server') {
+                            sh 'mvn sonar:sonar -B --no-transfer-progress'
+                        }
+                    }
+                }
+                stage('Dependency Check') {
+                    steps {
+                        sh 'mvn org.owasp:dependency-check-maven:check -B'
+                    }
+                }
+            }
+        }
+
+        stage('Package') {
+            steps {
+                sh 'mvn package -DskipTests -B --no-transfer-progress'
+                archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
+                stash name: 'jar-artifact', includes: 'target/*.jar'
+            }
+        }
+
+        stage('Docker Build') {
+            when {
+                anyOf { branch 'main'; branch 'develop' }
+            }
+            steps {
+                unstash 'jar-artifact'
+                sh """
+                    docker build \
+                      --tag ${REGISTRY}/${APP_NAME}:${IMAGE_TAG} \
+                      --tag ${REGISTRY}/${APP_NAME}:latest \
+                      --build-arg JAR_FILE=target/*.jar \
+                      .
+                """
+            }
+        }
+
+        stage('Security Scan') {
+            when {
+                anyOf { branch 'main'; branch 'develop' }
+            }
+            steps {
+                sh "trivy image --exit-code 1 --severity HIGH,CRITICAL ${REGISTRY}/${APP_NAME}:${IMAGE_TAG}"
+            }
+        }
+
+        stage('Docker Push') {
+            when {
+                anyOf { branch 'main'; branch 'develop' }
+            }
+            steps {
+                sh """
+                    echo "${DOCKER_CREDS_PSW}" | docker login ${REGISTRY} -u ${DOCKER_CREDS_USR} --password-stdin
+                    docker push ${REGISTRY}/${APP_NAME}:${IMAGE_TAG}
+                    docker push ${REGISTRY}/${APP_NAME}:latest
+                """
+            }
+        }
+
+        stage('Deploy Dev') {
+            when { branch 'develop' }
+            steps {
+                sh "./scripts/deploy.sh dev ${IMAGE_TAG}"
+            }
+        }
+
+        stage('Deploy Staging') {
+            when { branch 'main' }
+            steps {
+                sh "./scripts/deploy.sh staging ${IMAGE_TAG}"
+            }
+        }
+
+        stage('Integration Tests') {
+            when { branch 'main' }
+            steps {
+                sh 'mvn verify -Pintegration-tests -B'
+            }
+        }
+
+        stage('Approve Production Deploy') {
+            when { branch 'main' }
+            steps {
+                timeout(time: 24, unit: 'HOURS') {
+                    input message: "Deploy ${IMAGE_TAG} to production?", ok: 'Deploy'
+                }
+            }
+        }
+
+        stage('Deploy Production') {
+            when { branch 'main' }
+            steps {
+                sh "./scripts/deploy.sh production ${IMAGE_TAG}"
+            }
+        }
+    }
+
+    post {
+        always {
+            cleanWs()
+        }
+        success {
+            slackSend(
+                color: 'good',
+                message: "✅ ${JOB_NAME} #${BUILD_NUMBER} succeeded (${IMAGE_TAG}) - ${BUILD_URL}"
+            )
+        }
+        failure {
+            slackSend(
+                color: 'danger',
+                message: "❌ ${JOB_NAME} #${BUILD_NUMBER} FAILED - ${BUILD_URL}"
+            )
+            emailext(
+                to: 'devops-team@example.com',
+                subject: "FAILED: ${JOB_NAME} #${BUILD_NUMBER}",
+                body: """
+Build failed!
+
+Job: ${JOB_NAME}
+Build: #${BUILD_NUMBER}
+Branch: ${GIT_BRANCH}
+Commit: ${GIT_COMMIT}
+URL: ${BUILD_URL}
+
+Console: ${BUILD_URL}console
+                """
+            )
+        }
+    }
+}

@@ -1,0 +1,95 @@
+pipeline {
+    agent any
+
+    triggers {
+        githubPush()
+    }
+
+    environment {
+        PYTHONUNBUFFERED = 'true'
+        PORT = '5000'
+        MONGO_URI = 'mongodb://localhost:27017/students'
+        SECRET_KEY = 'staging-secret-key'
+        TESTING = 'true'
+        DOCKER_IMAGE = 'harika130822/hv-flask-app'
+        DOCKER_TAG = "${env.BUILD_NUMBER}"
+    }
+
+    stages {
+        stage('Clone Repository') {
+            steps {
+                git branch: 'main',
+                    url: 'https://github.com/Harika130822/HV_Assign_flask_CI-CD.git'
+            }
+        }
+
+        stage('Install Dependencies') {
+            steps {
+                sh '''
+                    python3 -m pip install --upgrade pip --break-system-packages --quiet
+                    python3 -m pip install -r requirements.txt --break-system-packages --quiet
+                    python3 -m pip install pytest --break-system-packages --quiet
+                '''
+            }
+        }
+
+        stage('Run Tests') {
+            steps {
+                sh '''
+                    python3 -m pytest test_app.py -v --tb=short
+                '''
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh '''
+                    docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} .
+                    docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_IMAGE}:latest
+                '''
+            }
+        }
+
+        stage('Push Docker Image to Docker Hub') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    sh '''
+                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                        docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
+                        docker push ${DOCKER_IMAGE}:latest
+                    '''
+                }
+            }
+        }
+
+        stage('Deploy to Staging') {
+            steps {
+                sh '''
+                    echo "Deploying to staging environment..."
+                    pkill -f "python3 app.py" || true
+                    nohup python3 app.py > app.log 2>&1 &
+                    sleep 5
+                    if curl -s --max-time 10 http://127.0.0.1:${PORT} > /dev/null; then
+                        echo "Application is running on port ${PORT}"
+                    else
+                        echo "Warning: App may still be starting. Check app.log for details."
+                        cat app.log || true
+                        exit 1
+                    fi
+                '''
+            }
+        }
+    }
+
+    post {
+        always {
+            echo "Pipeline finished."
+        }
+        success {
+            echo "Pipeline succeeded! Build #${env.BUILD_NUMBER} completed successfully."
+        }
+        failure {
+            echo "Pipeline failed! Build #${env.BUILD_NUMBER} failed. Check console output: ${env.BUILD_URL}"
+        }
+    }
+}

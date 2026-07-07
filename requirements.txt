@@ -1,0 +1,10 @@
+Flask
+Flask-PyMongo
+python-dotenv
+pymongo
+certifi
+mongomock
+pytest
+pylint
+bandit
+black
