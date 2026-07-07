@@ -27,20 +27,16 @@ pipeline {
         stage('Install Dependencies') {
             steps {
                 sh '''
-                    sudo apt-get update
-                    sudo apt-get install -y python3 python3-pip
-                    sudo apt install -y python3.14-venv
-                    cd ~/HV_Assign_Python_CICD_Pipeline
-                    python3 -m venv venv
-                    source venv/bin/activate
-                    pip install flask flask-pymongo pytest
-                    pip install -r requirements.txt
-                    python -c "import flask; print(flask.__version__)"
-                    pytest test_app.py -v --tb=short
-
-
-
-
+                    // sudo apt-get update
+                    // sudo apt-get install -y python3 python3-pip
+                    // sudo apt install -y python3.14-venv
+                    // cd ~/HV_Assign_Python_CICD_Pipeline
+                    // python3 -m venv venv
+                    // source venv/bin/activate
+                    // pip install flask flask-pymongo pytest
+                    // pip install -r requirements.txt
+                    // python -c "import flask; print(flask.__version__)"
+                    // pytest test_app.py -v --tb=short
                     python3 -m pip install --upgrade pip --break-system-packages --quiet
                     python3 -m pip install -r requirements.txt --break-system-packages --quiet
                     python3 -m pip install pytest --break-system-packages --quiet
