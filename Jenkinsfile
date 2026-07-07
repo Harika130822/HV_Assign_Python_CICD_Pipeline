@@ -47,8 +47,9 @@ pipeline {
                 sh '''
                     echo "Deploying to staging environment..."
                     pkill -f "python3 app.py" || true
-                    nohup python3 app.py > app.log 2>&1 &
                     sleep 5
+                    nohup python3 app.py > app.log 2>&1 &
+                    sleep 15
                     if curl -s --max-time 10 http://127.0.0.1:${PORT} > /dev/null; then
                         echo "Application is running on port ${PORT}"
                     else
