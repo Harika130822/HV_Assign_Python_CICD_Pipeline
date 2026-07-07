@@ -9,6 +9,7 @@ pipeline {
     environment {
         MONGO_URI = credentials('MONGO_URI_CICD')
 		SECRET_KEY = credentials('SECRET_KEY_CICD')
+        PORT = '5000'
     }
 
     stages {
@@ -33,39 +34,28 @@ pipeline {
             }
         }
 
-        stage('Test') {
-            
+        stage('Run Tests') {
             steps {
-                echo 'Running unit tests...'
-
                 sh '''
-                    . venv/bin/activate
-
-                    export PYTHONPATH=$WORKSPACE
-
-                    python -m pytest -v
+                    python3 -m pytest test_app.py -v --tb=short
                 '''
             }
-        } 
+        }
 
-        stage('Deploy') {
-            
+        stage('Deploy to Staging') {
             steps {
                 sh '''
-                    
-                    cd /home/ubuntu/apps/flask-cicd-demo
-
-                    git fetch origin
-                    git reset --hard origin/main
-
-                    . venv/bin/activate
-                    python -m pip install -r requirements.txt
-
-                    sudo systemctl restart flask-demo
-
+                    echo "Deploying to staging environment..."
+                    pkill -f "python3 app.py" || true
+                    nohup python3 app.py > app.log 2>&1 &
                     sleep 5
-
-                    curl http://localhost:8000/health
+                    if curl -s --max-time 10 http://127.0.0.1:${PORT} > /dev/null; then
+                        echo "Application is running on port ${PORT}"
+                    else
+                        echo "Warning: App may still be starting. Check app.log for details."
+                        cat app.log || true
+                        exit 1
+                    fi
                 '''
             }
         }
