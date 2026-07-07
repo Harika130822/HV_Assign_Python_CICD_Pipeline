@@ -3,7 +3,7 @@ pipeline {
 
     parameters {
         string(name: 'BRANCH', defaultValue: 'main', description: 'Branch to build')
-        choice(name: 'ENVIRONMENT', choices: ['dev', 'staging', 'production'], description: 'Deploy target')
+        choice(name: 'ENVIRONMENT', choices: ['main','feature'], description: 'Deploy target')
     }
 
     environment {
@@ -28,6 +28,8 @@ pipeline {
                 echo 'Installing dependencies...'
                 
                 sh '''
+                    sudo apt install python3-venv -y
+                    
                     python3 -m venv venv
 
                     . venv/bin/activate
