@@ -12,6 +12,7 @@ pipeline {
     }
 
     stages {
+        
 
         stage('Checkout') {
             
@@ -22,24 +23,16 @@ pipeline {
             }
         }
 
-        stage('Build') {
-            
+        stage('Install Dependencies') {
             steps {
-                echo 'Installing dependencies...'
-                
                 sh '''
-                    sudo apt install python3-venv -y
-                    
-                    python3 -m venv venv
-
-                    . venv/bin/activate
-
-                    python -m pip install --upgrade pip
-
-                    python -m pip install -r requirements.txt
+                    python3 -m pip install --upgrade pip --break-system-packages --quiet
+                    python3 -m pip install -r requirements.txt --break-system-packages --quiet
+                    python3 -m pip install pytest --break-system-packages --quiet
                 '''
             }
         }
+
         stage('Test') {
             
             steps {
