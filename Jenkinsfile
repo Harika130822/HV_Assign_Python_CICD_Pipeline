@@ -8,6 +8,8 @@ pipeline {
 
     environment {
         PORT = '5000'
+        MONGO_URI = 'mongodb+srv://new-user:wB1M5HCD84jZx63J@herovired-ppmcad.kncn7uu.mongodb.net/Students_db?retryWrites=true&w=majority'
+        SECRET_KEY = 'dev-secret-key'
     }
 
     stages {
@@ -22,12 +24,11 @@ pipeline {
             }
         }
 
-        stage('Install Dependencies') {
+        stage('Install Dependencies ...') {
             steps {
                 sh '''
                     python3 -m pip install --upgrade pip --break-system-packages --quiet
                     python3 -m pip install -r requirements.txt --break-system-packages --quiet
-                    python3 -m pip install pytest --break-system-packages --quiet
                 '''
             }
         }
