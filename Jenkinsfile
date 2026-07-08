@@ -7,15 +7,15 @@ pipeline {
     }
 
     environment {
-        PORT = '5000'
-        MONGO_URI = 'mongodb+srv://new-user:wB1M5HCD84jZx63J@herovired-ppmcad.kncn7uu.mongodb.net/Students_db?retryWrites=true&w=majority'
-        SECRET_KEY = 'dev-secret-key'
+        PORT = credentials('CICD_PORT')
+        MONGO_URI = credentials('CICD_MONGO_URI')
+        SECRET_KEY = credentials('CICD_SECRET_KEY')
     }
 
     stages {
         
 
-        stage('CHECKOUT') {
+        stage('Checkout') {
             
             steps {
                 echo 'Checking out source code...'
@@ -24,7 +24,7 @@ pipeline {
             }
         }
 
-        stage('BUILD') {
+        stage('Install Dependencies ...') {
             steps {
                 sh '''
                     python3 -m pip install --upgrade pip --break-system-packages --quiet
@@ -33,7 +33,7 @@ pipeline {
             }
         }
 
-        stage('TEST') {
+        stage('Run Tests') {
             steps {
                 sh '''
                     python3 -m pytest test_app.py -v --tb=short
@@ -41,7 +41,7 @@ pipeline {
             }
         }
 
-        stage('DEPLOY-STAGING') {
+        stage('Deploy to Staging') {
             steps {
                 sh '''
                     echo "Deploying to staging environment..."
