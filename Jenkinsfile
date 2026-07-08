@@ -15,7 +15,7 @@ pipeline {
     stages {
         
 
-        stage('Checkout') {
+        stage('CHECKOUT') {
             
             steps {
                 echo 'Checking out source code...'
@@ -24,7 +24,7 @@ pipeline {
             }
         }
 
-        stage('Install Dependencies ...') {
+        stage('BUILD') {
             steps {
                 sh '''
                     python3 -m pip install --upgrade pip --break-system-packages --quiet
@@ -33,7 +33,7 @@ pipeline {
             }
         }
 
-        stage('Run Tests') {
+        stage('TEST') {
             steps {
                 sh '''
                     python3 -m pytest test_app.py -v --tb=short
@@ -41,7 +41,7 @@ pipeline {
             }
         }
 
-        stage('Deploy to Staging') {
+        stage('DEPLOY-STAGING') {
             steps {
                 sh '''
                     echo "Deploying to staging environment..."
